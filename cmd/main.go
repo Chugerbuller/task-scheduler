@@ -1,6 +1,7 @@
 package main
 
 import (
+	"TaskScheduler/internal/db"
 	"log"
 	"net/http"
 	"os"
@@ -17,6 +18,16 @@ func main() {
 	port := os.Getenv("TODO_PORT")
 	if port == "" {
 		port = "7550"
+	}
+	dbFile := os.Getenv("TODO_DBFILE")
+	
+	_, err = os.Stat(dbFile)
+	if err != nil {
+		db.Install = true
+	}
+	err = db.Init(dbFile)
+	if err != nil {
+		log.Fatalf("Can`t open db %v", err)
 	}
 
 	router := chi.NewRouter()
