@@ -19,16 +19,12 @@ func main() {
 	if port == "" {
 		port = "7550"
 	}
-	dbFile := os.Getenv("TODO_DBFILE")
-	
-	_, err = os.Stat(dbFile)
+	dbPath := os.Getenv("TODO_dbPath")
+	storage, err := db.New(dbPath)
 	if err != nil {
-		db.Install = true
+		log.Fatalf("Can`t open database, %v", err)
 	}
-	err = db.Init(dbFile)
-	if err != nil {
-		log.Fatalf("Can`t open db %v", err)
-	}
+	defer storage.Close()
 
 	router := chi.NewRouter()
 

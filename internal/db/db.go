@@ -6,36 +6,33 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-type SchedularDb struct {
+type Storage struct {
 	db *sql.DB
 }
-var schedularDb SchedularDb
-var Install bool = false
 
-func Init(dbFile string) error {
+func New(dbPath string) (*Storage, error) {
 
-	var schema string = `CREATE TABLE scheduler(
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		return nil, err
+	}
+	stmt, err := db.Prepare(`CREATE TABLE IF NOT EXISTS scheduler(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     date CHAR(8) NOT NULL DEFAULT "",
     title CHAR(32) NOT NULL DEFAULT "",
 	comment TEXT NOT NULL DEFAULT "",
 	repeat CHAR(128) NOT NULL
-	)`
-
-	db, err := sql.Open("sqlite", dbFile)
+	)`)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer db.Close()
 
-	if Install {
-		_, err = db.Exec(schema)
-		if err != nil {
-			return err
-		}
+	_, err = stmt.Exec()
+	if err != nil {
+		return nil, err
 	}
-	schedularDb = SchedularDb{
-		db: db,
-	}
-	return nil
+	return &Storage{db: db}, nil
+}
+func (s *Storage) Close() {
+	s.db.Close()
 }
