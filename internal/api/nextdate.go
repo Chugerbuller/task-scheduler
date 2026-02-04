@@ -1,12 +1,16 @@
 package api
 
+//TODO reformat, logs
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
 )
+
+const layout = "20060102"
 
 type MonthRule struct {
 	Days   []int
@@ -19,10 +23,39 @@ var (
 	errDaysLimit = errors.New("More than 400 days.")
 )
 
+func nextDayHandler(w http.ResponseWriter, r *http.Request) {
+	now := time.Now()
+	var err error
+
+	nowStr := r.FormValue("now")
+	if nowStr != "" {
+		now, err = time.Parse(layout, nowStr)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}
+
+	dstart := r.FormValue("date")
+	if dstart == "" {
+		http.Error(w, "empty date.", http.StatusBadRequest)
+	}
+
+	repeat := r.FormValue("repeat")
+	res, err := NextDate(now, dstart, repeat)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
+	w.Header().Set("Content-Type", "text/plain")
+	w.Write([]byte(res))
+}
 func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 	parts := strings.Fields(repeat)
+	if len(parts) == 0 {
+		return "", errWrongRule
+	}
 	rule := parts[0]
-	date, err := time.Parse("20060102", dstart)
+	date, err := time.Parse(layout, dstart)
+
 	if err != nil {
 		return "", err
 	}
@@ -35,11 +68,11 @@ func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 		for {
 			date = date.AddDate(1, 0, 0)
 			if afterNow(date, now) {
-				return date.Format("20060102"), nil
+				return date.Format(layout), nil
 			}
 		}
 	case "d":
-		if len(parts) > 2 {
+		if len(parts) != 2 {
 			return "", errWrongRule
 		}
 		daysStr := parts[1]
@@ -53,10 +86,16 @@ func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 		for {
 			date = date.AddDate(0, 0, days)
 			if afterNow(date, now) {
-				return date.Format("20060102"), nil
+				return date.Format(layout), nil
 			}
 		}
 	case "w":
+		if len(parts) != 2 {
+			return "", errWrongRule
+		}
+		if date.Before(now) {
+			date = now
+		}
 		daysStr := parts[1]
 		weekdaysRule, err := parseWeekList(daysStr)
 		if err != nil {
@@ -68,21 +107,27 @@ func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 		}
 		daysCount := 7 //Разница не может быть больше 6
 		for _, w := range weekdaysRule {
-			diff := absInt(weekday - w)
-			if daysCount <= diff {
+			diff := w - weekday
+			if diff <= 0 {
+				diff = 7 - weekday + w
+			}
+			if daysCount >= diff {
 				daysCount = diff
 			}
 		}
 		for {
 			date = date.AddDate(0, 0, daysCount)
 			if afterNow(date, now) {
-				return date.Format("20060102"), nil
+				return date.Format(layout), nil
 			}
 		}
 
 	case "m":
 		if len(parts) < 2 {
 			return "", errWrongRule
+		}
+		if date.Before(now) {
+			date = now
 		}
 		rule, err := parseMonthRule(repeat)
 		if err != nil {
@@ -92,15 +137,14 @@ func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 		year := now.Year()
 
 		for {
-			next, ok := findNextInYear(now, year, rule)
+			next, ok := findNextInYear(date, year, rule)
 			if ok {
-				return next.Format("20060102"), nil
+				return next.Format(layout), nil
 			}
 			// Нет подходящей даты в этом году → переходим на следующий
 			year++
 			now = time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC)
 		}
-		return "", nil
 	default:
 		return "", errNoRule
 	}
@@ -111,7 +155,7 @@ func afterNow(date, now time.Time) bool {
 }
 func parseWeekList(str string) ([]int, error) {
 	daysStr := strings.Split(str, ",")
-	res := make([]int, len(daysStr))
+	var res []int
 	for _, ch := range daysStr {
 		weekday, err := strconv.Atoi(ch)
 		if err != nil {
@@ -137,7 +181,7 @@ func parseMonthRule(text string) (*MonthRule, error) {
 	}
 
 	// Парсим дни
-	days, err := parseMonthList(parts[1])
+	days, err := parseMListDays(parts[1])
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +189,7 @@ func parseMonthRule(text string) (*MonthRule, error) {
 	// Парсим месяцы (если есть)
 	var months []int
 	if len(parts) >= 3 {
-		months, err = parseMonthList(parts[2])
+		months, err = parseMListMonths(parts[2])
 		if err != nil {
 			return nil, err
 		}
@@ -160,7 +204,7 @@ func parseMonthRule(text string) (*MonthRule, error) {
 		Months: months,
 	}, nil
 }
-func parseMonthList(s string) ([]int, error) {
+func parseMListMonths(s string) ([]int, error) {
 	parts := strings.Split(s, ",")
 	res := make([]int, 0, len(parts))
 
@@ -171,6 +215,28 @@ func parseMonthList(s string) ([]int, error) {
 		v, err := strconv.Atoi(strings.TrimSpace(p))
 		if err != nil {
 			return nil, err
+		}
+		if v < 1 || v > 12 {
+			return nil, fmt.Errorf("Incorrect months.")
+		}
+		res = append(res, v)
+	}
+	return res, nil
+}
+func parseMListDays(s string) ([]int, error) {
+	parts := strings.Split(s, ",")
+	res := make([]int, 0, len(parts))
+
+	for _, p := range parts {
+		if p == "" {
+			continue
+		}
+		v, err := strconv.Atoi(strings.TrimSpace(p))
+		if err != nil {
+			return nil, err
+		}
+		if v < -2 || v > 31 {
+			return nil, fmt.Errorf("Incorrect days.")
 		}
 		res = append(res, v)
 	}

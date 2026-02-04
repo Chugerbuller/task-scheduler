@@ -1,12 +1,12 @@
 package main
 
 import (
+	"TaskScheduler/internal/api"
 	"TaskScheduler/internal/db"
+	"TaskScheduler/internal/server"
 	"log"
-	"net/http"
 	"os"
 
-	"github.com/go-chi/chi"
 	"github.com/joho/godotenv"
 )
 
@@ -25,14 +25,7 @@ func main() {
 		log.Fatalf("Can`t open database, %v", err)
 	}
 	defer storage.Close()
-
-	router := chi.NewRouter()
-
-	router.Handle("/*", http.FileServer(http.Dir("./web")))
-
-	log.Printf("Server started on port:%s", port)
-
-	if err := http.ListenAndServe(":"+port, router); err != nil {
-		log.Fatalf("Server is shuted down %v", err)
-	}
+	server := server.New()
+	api.Init(server)
+	server.Run(port)
 }
