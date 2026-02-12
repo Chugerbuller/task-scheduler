@@ -1,7 +1,7 @@
 package server
 
 import (
-	"log"
+	"TaskScheduler/internal/logger"
 	"net/http"
 
 	"github.com/go-chi/chi"
@@ -9,17 +9,18 @@ import (
 
 type Server struct {
 	Router *chi.Mux
+	Logger *logger.Logger
 }
 
-func New() *Server {
+func New(logger *logger.Logger) *Server {
 	return &Server{
 		Router: chi.NewRouter(),
+		Logger: logger,
 	}
 }
 func (s *Server) Run(port string) {
-	log.Printf("Server started on port:%s", port)
-
+	s.Logger.Print("Server started on port: %s", port)
 	if err := http.ListenAndServe(":"+port, s.Router); err != nil {
-		log.Fatalf("Server is shuted down %v", err)
+		s.Logger.Fatal("Server is shuted down %v", err)
 	}
 }

@@ -1,8 +1,6 @@
 package api
 
-//TODO reformat, logs
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -17,13 +15,7 @@ type MonthRule struct {
 	Months []int
 }
 
-var (
-	errNoRule    = errors.New("unknown rule.")
-	errWrongRule = errors.New("wrong rule.")
-	errDaysLimit = errors.New("More than 400 days.")
-)
-
-func nextDayHandler(w http.ResponseWriter, r *http.Request) {
+func nextDay(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	var err error
 
@@ -31,30 +23,33 @@ func nextDayHandler(w http.ResponseWriter, r *http.Request) {
 	if nowStr != "" {
 		now, err = time.Parse(layout, nowStr)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeError(w, err, http.StatusInternalServerError)
+			return
 		}
 	}
 
-	dstart := r.FormValue("date")
-	if dstart == "" {
-		http.Error(w, "empty date.", http.StatusBadRequest)
+	dStart := r.FormValue("date")
+	if dStart == "" {
+		writeError(w, fmt.Errorf("empty date."), http.StatusBadRequest)
+		return
 	}
 
 	repeat := r.FormValue("repeat")
-	res, err := NextDate(now, dstart, repeat)
+	res, err := NextDate(now, dStart, repeat)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeError(w, err, http.StatusBadRequest)
+		return
 	}
 	w.Header().Set("Content-Type", "text/plain")
 	w.Write([]byte(res))
 }
-func NextDate(now time.Time, dstart string, repeat string) (string, error) {
+func NextDate(now time.Time, dStart string, repeat string) (string, error) {
 	parts := strings.Fields(repeat)
 	if len(parts) == 0 {
-		return "", errWrongRule
+		return "", fmt.Errorf("wrong rule.")
 	}
 	rule := parts[0]
-	date, err := time.Parse(layout, dstart)
+	date, err := time.Parse(layout, dStart)
 
 	if err != nil {
 		return "", err
@@ -63,7 +58,7 @@ func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 
 	case "y":
 		if len(parts) > 1 {
-			return "", errWrongRule
+			return "", fmt.Errorf("wrong rule.")
 		}
 		for {
 			date = date.AddDate(1, 0, 0)
@@ -73,7 +68,7 @@ func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 		}
 	case "d":
 		if len(parts) != 2 {
-			return "", errWrongRule
+			return "", fmt.Errorf("wrong rule.")
 		}
 		daysStr := parts[1]
 		days, err := strconv.Atoi(daysStr)
@@ -81,17 +76,21 @@ func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 			return "", err
 		}
 		if days > 400 {
-			return "", errDaysLimit
+			return "", fmt.Errorf("More than 400 days.")
+		}
+		if date.Equal(now) {
+			return now.Format(layout), nil
 		}
 		for {
 			date = date.AddDate(0, 0, days)
 			if afterNow(date, now) {
 				return date.Format(layout), nil
 			}
+
 		}
 	case "w":
 		if len(parts) != 2 {
-			return "", errWrongRule
+			return "", fmt.Errorf("wrong rule.")
 		}
 		if date.Before(now) {
 			date = now
@@ -105,7 +104,7 @@ func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 		if weekday == 0 {
 			weekday = 7
 		}
-		daysCount := 7 //Разница не может быть больше 6
+		daysCount := 7
 		for _, w := range weekdaysRule {
 			diff := w - weekday
 			if diff <= 0 {
@@ -124,7 +123,7 @@ func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 
 	case "m":
 		if len(parts) < 2 {
-			return "", errWrongRule
+			return "", fmt.Errorf("wrong rule.")
 		}
 		if date.Before(now) {
 			date = now
@@ -141,16 +140,17 @@ func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 			if ok {
 				return next.Format(layout), nil
 			}
-			// Нет подходящей даты в этом году → переходим на следующий
 			year++
 			now = time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC)
 		}
 	default:
-		return "", errNoRule
+		return "", fmt.Errorf("unknown rule.")
 	}
 
 }
 func afterNow(date, now time.Time) bool {
+	date, now = date.Truncate(24*time.Hour), now.Truncate(24*time.Hour)
+
 	return date.After(now)
 }
 func parseWeekList(str string) ([]int, error) {
@@ -162,34 +162,24 @@ func parseWeekList(str string) ([]int, error) {
 			return nil, err
 		}
 		if weekday > 7 {
-			return nil, errWrongRule
+			return nil, fmt.Errorf("wrong rule.")
 		}
 		res = append(res, weekday)
 	}
 	return res, nil
-}
-func absInt(n int) int {
-	if n < 0 {
-		return -n
-	}
-	return n
 }
 func parseMonthRule(text string) (*MonthRule, error) {
 	parts := strings.Fields(text)
 	if len(parts) < 2 || parts[0] != "m" {
 		return nil, fmt.Errorf("wrong repeat format")
 	}
-
-	// Парсим дни
-	days, err := parseMListDays(parts[1])
+	days, err := parseDaysList(parts[1])
 	if err != nil {
 		return nil, err
 	}
-
-	// Парсим месяцы (если есть)
 	var months []int
 	if len(parts) >= 3 {
-		months, err = parseMListMonths(parts[2])
+		months, err = parseMonthsList(parts[2])
 		if err != nil {
 			return nil, err
 		}
@@ -204,7 +194,7 @@ func parseMonthRule(text string) (*MonthRule, error) {
 		Months: months,
 	}, nil
 }
-func parseMListMonths(s string) ([]int, error) {
+func parseMonthsList(s string) ([]int, error) {
 	parts := strings.Split(s, ",")
 	res := make([]int, 0, len(parts))
 
@@ -223,7 +213,7 @@ func parseMListMonths(s string) ([]int, error) {
 	}
 	return res, nil
 }
-func parseMListDays(s string) ([]int, error) {
+func parseDaysList(s string) ([]int, error) {
 	parts := strings.Split(s, ",")
 	res := make([]int, 0, len(parts))
 
@@ -250,7 +240,7 @@ func findNextInYear(now time.Time, year int, r *MonthRule) (time.Time, bool) {
 
 		for _, d := range r.Days {
 			day := d
-			if d < 0 { // -1, -2
+			if d < 0 {
 				day = daysInMonth + d + 1
 			}
 
