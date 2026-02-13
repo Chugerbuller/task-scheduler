@@ -2,8 +2,6 @@ package api
 
 import (
 	"TaskScheduler/internal/db"
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -14,9 +12,10 @@ type TasksResp struct {
 	Tasks []*db.Task `json:"tasks"`
 }
 
+const limit = 50
+
 var (
 	empty         = struct{}{}
-	limit         = 50
 	errNotValidID = fmt.Errorf("not valid id")
 	errTaskSearch = fmt.Errorf("Задача не найдена")
 )
@@ -40,28 +39,20 @@ func task(w http.ResponseWriter, r *http.Request) {
 
 }
 func addTask(w http.ResponseWriter, r *http.Request) {
-	var task *db.Task
-	var buf bytes.Buffer
-	defer r.Body.Close()
-	_, err := buf.ReadFrom(r.Body)
-	if err != nil {
+	var task db.Task
+	if err := jsonDeserialize(r.Body, &task); err != nil {
 		writeError(w, err, http.StatusBadRequest)
-		return
-	}
-
-	if err := json.Unmarshal(buf.Bytes(), &task); err != nil {
-		writeError(w, err, http.StatusInternalServerError)
 		return
 	}
 	if len(task.Title) == 0 {
 		writeError(w, fmt.Errorf("Task is required"), http.StatusBadRequest)
 		return
 	}
-	if err = checkDate(task); err != nil {
+	if err := checkDate(&task); err != nil {
 		writeError(w, err, http.StatusBadRequest)
 		return
 	}
-	id, err := db.AddTask(task)
+	id, err := db.AddTask(&task)
 	if err != nil {
 		writeError(w, err, http.StatusInternalServerError)
 		return
@@ -72,27 +63,20 @@ func addTask(w http.ResponseWriter, r *http.Request) {
 	writeJson(w, response)
 }
 func updateTask(w http.ResponseWriter, r *http.Request) {
-	var task *db.Task
-	var buf bytes.Buffer
-	defer r.Body.Close()
-	_, err := buf.ReadFrom(r.Body)
-	if err != nil {
+	var task db.Task
+	if err := jsonDeserialize(r.Body, &task); err != nil {
 		writeError(w, err, http.StatusBadRequest)
-		return
-	}
-	if err := json.Unmarshal(buf.Bytes(), &task); err != nil {
-		writeError(w, err, http.StatusInternalServerError)
 		return
 	}
 	if len(task.Title) == 0 {
 		writeError(w, fmt.Errorf("Title is required"), http.StatusBadRequest)
 		return
 	}
-	if err := checkDate(task); err != nil {
+	if err := checkDate(&task); err != nil {
 		writeError(w, err, http.StatusBadRequest)
 		return
 	}
-	if err := db.UpdateTask(task); err != nil {
+	if err := db.UpdateTask(&task); err != nil {
 		writeError(w, err, http.StatusInternalServerError)
 		return
 	}

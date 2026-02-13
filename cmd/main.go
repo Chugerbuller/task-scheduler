@@ -24,6 +24,14 @@ func main() {
 	if len(dbPath) == 0 {
 		dbPath = "./database/scheduler.db"
 	}
+	password := os.Getenv("TODO_PASSWORD")
+	if len(password) == 0 {
+		password = "1234"
+	}
+	jwtSecret := os.Getenv("TODO_JWT_SECRET")
+	if len(jwtSecret) == 0 {
+		jwtSecret = "secret"
+	}
 	err = db.Init(dbPath, logger.NewDb())
 	if err != nil {
 		log.Fatalf("Can`t open database, %v", err)
@@ -31,5 +39,8 @@ func main() {
 	defer db.Close()
 	server := server.New(logger.NewServer())
 	api.Init(server, logger.NewApi())
+	api.InitPassword(password)
+	api.InitJwtSecret(jwtSecret)
+
 	server.Run(port)
 }

@@ -3,7 +3,9 @@ package api
 import (
 	"TaskScheduler/internal/logger"
 	"TaskScheduler/internal/server"
+	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 )
 
@@ -39,5 +41,20 @@ func writeJson(w http.ResponseWriter, data any) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-	w.Write([]byte(response))
+	if _, err := w.Write([]byte(response)); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+func jsonDeserialize(stream io.ReadCloser, dest any) error {
+	var buf bytes.Buffer
+	_, err := buf.ReadFrom(stream)
+	if err != nil {
+		return err
+	}
+	defer stream.Close()
+	if err := json.Unmarshal(buf.Bytes(), &dest); err != nil {
+		return err
+	}
+	logs.Print("Password: %s", password)
+	return nil
 }

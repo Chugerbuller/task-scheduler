@@ -1,3 +1,4 @@
 {
-    "docwriter.style": "GoDoc"
+    "docwriter.style": "GoDoc",
+    "groupImports.onSave": false
 }

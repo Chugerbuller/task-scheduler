@@ -1,13 +1,10 @@
 package api
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -23,26 +20,23 @@ type passwordResp struct {
 	Token string `json:"token"`
 }
 
+var (
+	password  string
+	jwtSecret []byte
+)
+
 func signIn(w http.ResponseWriter, r *http.Request) {
 	var req passwordReq
-	var buf bytes.Buffer
-	_, err := buf.ReadFrom(r.Body)
-	if err != nil {
+	if err := jsonDeserialize(r.Body, &req); err != nil {
 		writeError(w, err, http.StatusBadRequest)
 		return
 	}
-	defer r.Body.Close()
-	if err := json.Unmarshal(buf.Bytes(), &req); err != nil {
-		writeError(w, err, http.StatusBadRequest)
-		return
-	}
-	password := os.Getenv("TODO_PASSWORD")
 	if len(password) == 0 {
-		writeError(w, fmt.Errorf("Can`t load env"), http.StatusInternalServerError)
+		writeError(w, fmt.Errorf("Password wasn`t init"), http.StatusInternalServerError)
 		return
 	}
 	if password == req.Password {
-		token, err := createToken(password)
+		token, err := createToken()
 		if err != nil {
 			writeError(w, err, http.StatusInternalServerError)
 			return
@@ -57,7 +51,6 @@ func signIn(w http.ResponseWriter, r *http.Request) {
 }
 
 func tokenIsValid(tokenStr string) (bool, error) {
-	jwtSecret := []byte(os.Getenv("TODO_PASSWORD"))
 	if len(jwtSecret) == 0 {
 		return false, fmt.Errorf("Can`t load env")
 	}
@@ -74,18 +67,17 @@ func tokenIsValid(tokenStr string) (bool, error) {
 		return false, fmt.Errorf("Invalid token claims ")
 	}
 
-	currentPasswordHash := getCurrentPasswordHash()
-	if claims.PasswordHash != currentPasswordHash {
+	passwordHash := getPasswordHash()
+	if claims.PasswordHash != passwordHash {
 		return false, fmt.Errorf("The password has been changed ")
 	}
 	return true, nil
 }
-func createToken(password string) (string, error) {
-	jwtSecret := []byte(os.Getenv("TODO_PASSWORD"))
+func createToken() (string, error) {
 	if len(jwtSecret) == 0 {
 		return "", fmt.Errorf("Can`t load env")
 	}
-	passHash := getCurrentPasswordHash()
+	passHash := getPasswordHash()
 	claims := Claims{
 		PasswordHash: passHash,
 	}
@@ -96,8 +88,13 @@ func createToken(password string) (string, error) {
 	}
 	return signedToken, nil
 }
-func getCurrentPasswordHash() string {
-	password := os.Getenv("TODO_PASSWORD")
+func getPasswordHash() string {
 	hash := sha256.Sum256([]byte(password))
 	return hex.EncodeToString(hash[:])
+}
+func InitPassword(pswd string) {
+	password = pswd
+}
+func InitJwtSecret(jwtSec string) {
+	jwtSecret = []byte(jwtSec)
 }
