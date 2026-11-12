@@ -26,8 +26,9 @@ jobs:
 
     - name: Run local server
       run: |
-        CGO_ENABLED=0 GOOS=linux go run cmd/main.go &
-        sleep 100
-        go test -run ^TestApp$ ./tests
+        go build -o scheduler ./cmd/main.go
+        ./scheduler &
+        for i in $(seq 1 30); do curl -sf http://localhost:7540/ >/dev/null && break; sleep 1; done
+        go test ./tests
         
         

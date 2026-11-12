@@ -20,45 +20,59 @@
 
 ```bash
 git clone https://github.com/Chugerbuller/task-scheduler
-cd todo-scheduler
+cd task-scheduler
 ```
 
-### 2. Запуск приложения
+### 2. Настройка
+
+Скопируйте пример настроек и задайте свои значения:
+
+```bash
+cp .env.example .env
+```
+
+| Переменная | Описание | По умолчанию |
+|---|---|---|
+| `TODO_PORT` | порт сервера | `7540` |
+| `TODO_DBFILE` | путь к файлу SQLite | `./database/scheduler.db` |
+| `TODO_PASSWORD` | пароль для входа; пустой отключает авторизацию | пусто |
+| `TODO_JWT_SECRET` | секрет для подписи JWT | случайный при каждом запуске |
+
+Файл `.env` необязателен: переменные можно передать через окружение.
+
+### 3. Запуск приложения
 ```bash
 go mod tidy
 go run ./cmd/main.go
 ```
-### 3. Откройте браузер
+### 4. Откройте браузер
 ```text
 http://localhost:7540/login.html
 ```
 
 ## Тесты
 
-### Настройка 
-Откройте файл tests/settings.go и вставьте полученный токен:
-
-```go
-package tests
-
-var (
-    Port        = "7540"
-    DBFile      = "../database/scheduler_test.db"
-    FullNextDate = true
-    Search      = true
-    Token       = "" // Вставьте ваш токен здесь!
-)
-```
-## Запуск тестов
+Тесты обращаются к запущенному серверу, поэтому сначала запустите приложение, затем:
 
 ```bash
 go test ./tests
 ```
+
+Если задан `TODO_PASSWORD`, тестам нужен токен. Получите его и передайте через переменную окружения:
+
+```bash
+curl -s -X POST localhost:7540/api/signin -d '{"password":"<ваш пароль>"}'
+TODO_TOKEN=<токен> go test ./tests
+```
+
+В GitHub Actions сервер запускается без пароля и прогоняются все тесты.
+
 ## Запуск через Docker
+
 ```bash
 # Сборка образа
 docker build -t todo-scheduler .
 
-# Запуск контейнера
- docker run -p 7540:7540 todo-scheduler
+# Запуск контейнера с настройками из .env
+docker run --env-file .env -p 7540:7540 todo-scheduler
 ```

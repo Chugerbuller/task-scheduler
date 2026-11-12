@@ -15,8 +15,7 @@ WORKDIR /app
 
 COPY --from=builder /app/scheduler .
 COPY --from=builder /app/web ./web
-COPY --from=builder /app/database ./database
-COPY --from=builder /app/.env ./.env
+RUN mkdir -p /app/database
 
 EXPOSE 7540
 
